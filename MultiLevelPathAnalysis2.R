@@ -42,7 +42,7 @@ return(coefMatrix)
 }
 	
 
- 
+# recursively find all the indirect paths
 findIndirectPaths <- function(coefMatrix, indirectPaths, varsToSearch){
 ix_h = 0 
 allVars<-rownames(coefMatrix)
@@ -54,13 +54,9 @@ for(v in varsToSearch){
 	indirectPaths = c(indirectPaths, thisVar) 	
 	
 	if (length(indirectPaths) > 2){
-		#print(indirectPaths)
-		ix_h  = ix + 1
-		ix <<- ix_h # path index
-		
-		#print(ix)
+		ix <<- ix + 1 # path index
+
 		indirectPathsSet[[ix]]<<-indirectPaths # include this path 
-		#print(indirectPathsSet)
 	}
  	
 	if(sum(abs(thisRow))>0){
@@ -74,13 +70,8 @@ for(v in varsToSearch){
  	return(indirectPaths)
 }
 
- 
-#run the function
-#findIndirectPaths(coefMatrix, indirectPaths, varNames)
 
-
-
-# compute all Indirect Path Coefficients
+# compute all indirect path coefficients
 indirectPathCoefs <- function(coefMatrix, allIndirectPathDes){
 	varNames = colnames(coefMatrix)
 allIndirectPathCoef = list()
@@ -101,11 +92,11 @@ for( i in 1:length(allIndirectPathDes) ){
 	return(allIndirectPathCoef)
 }	
 
-
+# The main function.  Given some paths and a data frame, run a path analysis
 pathAnalysis <- function(paths, DF)	{
 
-	indirectPathsSet <<- list()
-	ix <<- 0	
+	indirectPathsSet <<- list() #this is a global variable
+	ix <<- 0	# this is a related global variable
 	
 	conMatrix = makeConnectionMatrix(paths,DF)
 	coefMatrix = estDirectCoefficients(conMatrix,DF)
@@ -131,9 +122,6 @@ MV1	<- MV2 + rnorm( n , 2 )
 IV	<- MV1 + rnorm( n , 2 )
 DF	<- data.frame( DV , MV2, MV1, IV )
 
-#indirectPaths = NULL
-#varNames = attributes(DF)$names
-#varsToSearch = varNames
 
 paths = c('IV->MV1', 'IV->MV2', 'MV1->DV', 'MV2->DV')
 #paths = c('IV->MV1', 'MV1->MV2', 'MV2->DV')
