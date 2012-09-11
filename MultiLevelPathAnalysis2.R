@@ -43,31 +43,32 @@ estDirectCoefficients <- function(connectionMatrix, DF){
 
 
 # recursively find all the indirect paths
-findIndirectPaths <- function(coefMatrix, indirectPaths, varsToSearch){
-  ix_h = 0 
+findIndirectPaths <- function(coefMatrix, IPs, varsToSearch){
+  
   allVars<-rownames(coefMatrix)
   
   for(v in varsToSearch){	
+    
     i = which(allVars==v)
     thisRow<-coefMatrix[i,]
     thisVar<-rownames(coefMatrix)[i]
-    indirectPaths = c(indirectPaths, thisVar) 	
+    IPs$thisIP = c(IPs$thisIP, thisVar) 	
     
-    if (length(indirectPaths) > 2){
-      ix <<- ix + 1 # path index
+    if (length(IPs$thisIP) > 2){
       
-      indirectPathsSet[[ix]]<<-indirectPaths # include this path 
+      IPs$ix <- IPs$ix + 1 # update path index
+      IPs$IPlist[[IPs$ix]]<-IPs$thisIP # include this path in the list 
     }
     
     if(sum(abs(thisRow))>0){
       newVarsToSearch = allVars[which(thisRow!=0)]
       newCoefMatrix = coefMatrix
       newCoefMatrix[i,] = 0
-      findIndirectPaths(coefMatrix, indirectPaths, newVarsToSearch)
+      IPs = findIndirectPaths(coefMatrix, IPs, newVarsToSearch)
     }
-    indirectPaths = indirectPaths[-length(indirectPaths)]
+    IPs$thisIP = IPs$thisIP[-length(IPs$thisIP)]
   }
-  return(indirectPaths)
+  return(IPs)
 }
 
 
@@ -84,8 +85,7 @@ indirectPathCoefs <- function(coefMatrix, allIndirectPathDes){
       V2<-which(thisPath[j+1] == varNames)
       
       thisDirCoef = coefMatrix[V1,V2];
-      thisIndCoef = thisIndCoef * thisDirCoef
-      
+      thisIndCoef = thisIndCoef * thisDirCoef      
     }
     allIndirectPathCoef[[i]] = thisIndCoef
   }
@@ -95,15 +95,18 @@ indirectPathCoefs <- function(coefMatrix, allIndirectPathDes){
 # The main function.  Given some paths and a data frame, run a path analysis
 pathAnalysis <- function(paths, DF)	{
   
-  indirectPathsSet <<- list() #this is a global variable
-  ix <<- 0	# this is a related global variable
-  
   conMatrix = makeConnectionMatrix(paths,DF)
   coefMatrix = estDirectCoefficients(conMatrix,DF)
-  findIndirectPaths(coefMatrix, NULL, attributes(DF)$names)
+  
+  IPs = list()
+  IPs$ix = 0
+  IPs$IPlist = list()
+  IPs$thisIP = NULL
+  
+  IPs<-findIndirectPaths(coefMatrix, IPs, attributes(DF)$names)
   
   #trim off repeat paths (though I don't think these should exist)
-  allIndirectPathDes<-unique(indirectPathsSet)
+  allIndirectPathDes<-unique(IPs$IPlist)
   
   indCoefs<-indirectPathCoefs(coefMatrix, allIndirectPathDes)
   
@@ -129,7 +132,6 @@ paths = c('IV->MV1', 'IV->MV2', 'MV1->DV', 'MV2->DV')
 pathRes<-pathAnalysis(paths, DF)
 
 ##TO DO: pass around an object with things like varnams and nVars already included in it
-# figure out a possibly less ghetto way to use global variables
 # better connect the ind coefficients and their descriptions
 # check for crazy input, non-semantic input, and cyclic connections (which would invalidate this procedure)
 #implement bootstrapping for significance testing of ind coefficients
