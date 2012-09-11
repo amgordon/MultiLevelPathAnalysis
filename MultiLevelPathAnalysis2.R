@@ -1,3 +1,4 @@
+# initialize the pth object
 makePathObj <- function(paths, DF){
   pth = list()
   pth$paths = paths
@@ -11,7 +12,7 @@ makePathObj <- function(paths, DF){
   return (pth)
 }
 
-#create matrix of direct connections
+#create matrix of direct path connections
 makeConnectionMatrix <- function(pth){
   
   connectionMatrix = matrix(0, pth$nVars, pth$nVars)
@@ -30,7 +31,7 @@ makeConnectionMatrix <- function(pth){
 }
 
 # create matrix of direct path coefficients	
-estDirectCoefficients <- function(pth){
+directPathCoeffs <- function(pth){
   coefMatrix = pth$connectionMatrix
   coefMatrix[,] = 0
   for( i in 1:ncol(pth$connectionMatrix) ){    
@@ -50,6 +51,7 @@ estDirectCoefficients <- function(pth){
   return(pth)
 }
 
+# a wrapper to call the function "findIndirectPaths"
 findIndirectPathsWrapper <- function(pth) {
   pth$ix<-0
   pth = findIndirectPaths(pth, pth$varNames)
@@ -75,12 +77,11 @@ findIndirectPaths <- function(pth, varsToSearch){
     if (length(pth$thisIP) > 2){      
       pth$ix <- pth$ix + 1 # update path index
       pth$indirectPaths[[pth$ix]]<-pth$thisIP # include this path in the list 
-      print(pth$ix)
     }
     
     if(sum(abs(thisRow))>0){
       newVarsToSearch = pth$varNames[which(thisRow!=0)]
-      newCoefMatrix = coefMatrix
+      newCoefMatrix = pth$coefMatrix
       newCoefMatrix[i,] = 0
       pth = findIndirectPaths(pth, newVarsToSearch)
     }
@@ -111,13 +112,13 @@ indirectPathCoefs <- function(pth){
   return(pth)
 }	
 
-# The main function.  Given some paths and a data frame, run a path analysis
+# the main function.  given some paths and a data frame, run a path analysis
 pathAnalysis <- function(paths, DF)	{
   
   pth = makePathObj(paths, DF)
   
   pth = makeConnectionMatrix(pth)
-  pth = estDirectCoefficients(pth)
+  pth = directPathCoeffs(pth)
   pth = findIndirectPathsWrapper(pth)  
   pth = indirectPathCoefs(pth)
   
@@ -141,5 +142,6 @@ pathRes<-pathAnalysis(paths, DF)
 ##TO DO: 
 # better connect the ind coefficients and their descriptions
 # check for crazy input, non-semantic input, and cyclic connections (which would invalidate this procedure)
-#implement bootstrapping for significance testing of ind coefficients
-#make it work for lmer
+# implement bootstrapping for significance testing of ind coefficients
+# make it work for lmer
+# thoroughly check other test cases
