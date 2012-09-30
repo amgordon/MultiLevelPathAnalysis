@@ -18,6 +18,7 @@ makePathObj <- function(paths, DF, covs=NULL, RFX=NULL, intercepts = TRUE, slope
   return (pth)
 }
 
+# establish a list of variables that have connections among them.
 getVarNames <- function(pth){
   varNames<-NULL
   for( i in 1:length(pth$paths) ){
@@ -32,6 +33,7 @@ getVarNames <- function(pth){
   pth$nVars = length(varNames)
   return(pth)
 }
+
 #create matrix of direct path connections
 makeConnectionMatrix <- function(pth){
   
@@ -109,15 +111,12 @@ directPathCoeffs <- function(pth){
   return(pth)
 }
 
-# a wrapper to call the function "findIndirectPaths"
+# a wrapper to call the recursive function "findIndirectPaths"
 findIndirectPathsWrapper <- function(pth) {
   pth$ix<-0
   pth = findIndirectPaths(pth, pth$varNames)
   pth$thisIP<-NULL
-  pth$ix<-NULL
-  
-  #trim off repeat paths (unclear if this is still needed)
-  
+  pth$ix<-NULL  
   return(pth)
 }
 
@@ -129,7 +128,13 @@ findIndirectPaths <- function(pth, varsToSearch){
     i = which(pth$varNames==v)
     thisRow<-pth$coefMatrix[i,]
     thisVar<-pth$varNames[i]
-    pth$thisIP = c(pth$thisIP, thisVar) 	
+    pth$thisIP = c(pth$thisIP, thisVar)
+    
+    if (length(unique(pth$thisIP)) != length(pth$thisIP)) {
+      badPath = paste(pth$thisIP, collapse = "->")
+      errText = paste("Cyclic path found: ", badPath, ". Path connections must be cyclic.", sep="")
+      stop(errText)
+    }
     
     if (length(pth$thisIP) > 2){      
       pth$ix <- pth$ix + 1 # update path index
@@ -170,6 +175,7 @@ indirectPathCoefs <- function(pth){
   return(pth)
 }	
 
+# Find bootstrap confidence intervals and p-values
 bootStrapCoefs <- function(pth){
   dir_paths = array(0, c(dim(pth$coefMatrix), pth$nBootReps))
   ind_paths = NULL
@@ -229,7 +235,7 @@ return(pth)
 }
 
 
-# the main function.  given some paths and a data frame, run a path analysis
+# The main function.  Run a path analysis!
 pathAnalysis <- function(paths, DF, covs=NULL, RFX=NULL, intercepts = TRUE, slopes = TRUE, nBootReps = 0, glmerText=NULL){
   
   pth = makePathObj(paths, DF, covs, RFX, intercepts, slopes, nBootReps, glmerText)
@@ -263,8 +269,9 @@ pathRes<-pathAnalysis(paths, DF, covs, RFX, nBootReps = 100)
 
 ##TO DO: 
 
+# make sure the p-values for the bootstrap are correct.
 # organize direct path stuff
-# check for crazy input, non-semantic input, and cyclic connections (which would invalidate this procedure)
+# check for crazy and non-semantic input
 # allow for lists of covariates and glmerText, in case each direct path requires something special. 
 # thoroughly check other test cases
-# is there a way to suppress the matrix of bootstrapped values from appearing when the pathRes variable is typed?  If not, consider not storing the bootstrapped values...
+# is there a way to suppress the matrix of bootstrapped values from appearing when the pathRes variable is typed?  (e.g. slots?) If not, consider not storing the bootstrapped values...
