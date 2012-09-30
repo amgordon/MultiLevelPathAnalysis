@@ -3,21 +3,35 @@ makePathObj <- function(paths, DF, covs=NULL, RFX=NULL, intercepts = TRUE, slope
   pth = list()
   pth$paths = paths
   pth$DF = DF
-  pth$varNames = attributes(DF)$names
-  pth$nVars = length(pth$varNames)
+  pth$varNames = NULL
+  pth$nVars = 0
   pth$connectionMatrix = matrix()
   pth$coefMatrix = matrix()
-  pth$indirectPaths = list()
-  pth$indirectPathCoefs = list()
+  pth$IP = list()
   pth$covs = covs
   pth$RFX = RFX
   pth$intercepts = intercepts
   pth$slopes = slopes
   pth$glmerText = glmerText
+  pth$modelList = list()
   pth$nBootReps = nBootReps
   return (pth)
 }
 
+getVarNames <- function(pth){
+  varNames<-NULL
+  for( i in 1:length(pth$paths) ){
+    thisPath<-pth$paths[i]
+    theseVars<-strsplit(thisPath, "->")[[1]]
+    V1<-theseVars[1]
+    V2<-theseVars[2]
+    varNames = union(varNames, V1)
+    varNames = union(varNames, V2)
+  }
+  pth$varNames = varNames
+  pth$nVars = length(varNames)
+  return(pth)
+}
 #create matrix of direct path connections
 makeConnectionMatrix <- function(pth){
   
@@ -40,6 +54,9 @@ makeConnectionMatrix <- function(pth){
 directPathCoeffs <- function(pth){
   coefMatrix = pth$connectionMatrix
   coefMatrix[,] = 0
+  
+  modelList<-list()
+  eq = 0
   for( i in 1:ncol(pth$connectionMatrix) ){    
     thisCol<-pth$connectionMatrix[,i]
     
@@ -48,6 +65,7 @@ directPathCoeffs <- function(pth){
       DV = pth$varNames[i]      
       IVsCombined	<- paste( c(IVs) , collapse = "+" )
       formulaText <- paste( DV, IVsCombined , sep = "~" )
+      eq = eq+1
       
       for(j in 1:length(pth$covs)){
         formulaText <- paste(formulaText, pth$covs[j], sep = "+")
@@ -58,39 +76,36 @@ directPathCoeffs <- function(pth){
       }
            
       for(j in 1:length(pth$RFX)){
-        print(j)
+       
         if(pth$intercepts){
-          print(pth$RFX)
           thisRandEffect<-paste('(1|',pth$RFX[j],')', sep = "")
           formulaText <- paste(formulaText, thisRandEffect, sep = "+")
         }
         
         if(pth$slopes){
-          print("slopes")
           for(k in 1:length(IVs)){
             thisSlope<-paste('(', IVs[k], '+0|', pth$RFX[k], ')', sep = "")
-            print(thisSlope)
             formulaText <- paste(formulaText, thisSlope, sep = "+")
           }
         }
       }
-              
-      print("text is")
-      print(formulaText)
-      
+                  
       thisFormula <- as.formula(formulaText)
       
-      if(!is.null(pth$glmerText)){    
+      if(!is.null(pth$glmerText) | pth$intercepts | pth$slopes){    
         thisMod<-glmer(thisFormula, pth$DF) # run a mixed glm
         theseCoef<-attr(thisMod, "fixef")
       } else {
-        theseCoef <- coefficients(summary(lm(thisFormula, pth$DF)))[,"Estimate"] #otherwise run a normal linear model
+        thisMod<-lm(thisFormula, pth$DF)
+        theseCoef <- coefficients(summary(thisMod))[,"Estimate"] #otherwise run a normal linear model
       }
+      modelList[[eq]] = thisMod
       colsToReplace = which(thisCol==1)
       coefMatrix[colsToReplace,i] = theseCoef[2:(1+length(colsToReplace))]
     }
   }
   pth$coefMatrix = coefMatrix
+  pth$modelList = modelList
   return(pth)
 }
 
@@ -102,7 +117,6 @@ findIndirectPathsWrapper <- function(pth) {
   pth$ix<-NULL
   
   #trim off repeat paths (unclear if this is still needed)
-  pth$indirectPaths<-unique(pth$indirectPaths)
   
   return(pth)
 }
@@ -119,7 +133,8 @@ findIndirectPaths <- function(pth, varsToSearch){
     
     if (length(pth$thisIP) > 2){      
       pth$ix <- pth$ix + 1 # update path index
-      pth$indirectPaths[[pth$ix]]<-pth$thisIP # include this path in the list 
+      pth$IP[[pth$ix]] = list()
+      pth$IP[[pth$ix]]$path = pth$thisIP
     }
     
     if(sum(abs(thisRow))>0){
@@ -138,8 +153,8 @@ findIndirectPaths <- function(pth, varsToSearch){
 indirectPathCoefs <- function(pth){
 
   allIndirectPathCoef = list()
-  for( i in 1:length(pth$indirectPaths) ){
-    thisPath = pth$indirectPaths[[i]]
+  for( i in 1:length(pth$IP) ){
+    thisPath = pth$IP[[i]]$path
     thisIndCoef = 1
     for( j in 1:(length(thisPath)-1) ){
       
@@ -150,8 +165,8 @@ indirectPathCoefs <- function(pth){
       thisIndCoef = thisIndCoef * thisDirCoef      
     }
     allIndirectPathCoef[[i]] = thisIndCoef
+    pth$IP[[i]]$coef = thisIndCoef
   }
-  pth$indirectPathCoefs = allIndirectPathCoef
   return(pth)
 }	
 
@@ -164,18 +179,25 @@ bootStrapCoefs <- function(pth){
     boot_pth$DF = boot_DF
     boot_pth = directPathCoeffs(boot_pth)
     boot_pth = indirectPathCoefs(boot_pth)
-    ind_paths 	<- as.data.frame(rbind(ind_paths, unlist(boot_pth$indirectPathCoefs)))
+    theseIndCoefs = sapply(boot_pth$IP, function(x) getElement(x,"coef"))
+    ind_paths 	<- as.data.frame(rbind(ind_paths, theseIndCoefs))
     dir_paths[,,i]<-boot_pth$coefMatrix
   }
   idxCI = c(round(.025*nrow(ind_paths)+.5), round(.975*nrow(ind_paths)+.5))
   
-  pth$bootDirect$dist = dir_paths
+  #pth$bootDirect$dist = dir_paths
   pth$bootDirect$CI95Pct = array(list(NULL), dim(pth$coefMatrix))
-  pth$bootDirect$p = array(-1, dim(pth$coefMatrix))
+  rownames(pth$bootDirect$CI95Pct) = rownames(pth$coefMatrix)
+  colnames(pth$bootDirect$CI95Pct) = colnames(pth$coefMatrix)
+  #pth$bootDirect$p = array(0, dim(pth$coefMatrix))
+  pth$bootDirect$p = pth$coefMatrix
+  pth$bootDirect$p[,] = 0
+
   for(i in 1:pth$nVars){
     for(j in 1:pth$nVars){
+      if (pth$connectionMatrix[i,j]==1){
       thisSortedVec = sort(dir_paths[i,j,])
-      pth$bootDirect$CI95Pct[[i,j]] = list(thisSortedVec[idxCI[1]],thisSortedVec[idxCI[2]])
+      pth$bootDirect$CI95Pct[[i,j]] = c(thisSortedVec[idxCI[1]],thisSortedVec[idxCI[2]])
       dist_prop<- as.numeric(pth$coefMatrix[i,j]>thisSortedVec)
       p_h = 2*abs(.5 - sum(dist_prop)/length(dist_prop))
       p = sapply(p_h, function(x) min(c(x, 1-x)))
@@ -183,24 +205,25 @@ bootStrapCoefs <- function(pth){
         p = 1/pth$nBootReps
       }
       pth$bootDirect$p[i,j] = p
+      }
     }
   }
-  
-  ind = list()
-  ind$sorted_dists = sapply(ind_paths, sort)
-  ind$dist_prop<-sapply(as.matrix(ind_paths), function(x) as.numeric(x>unlist(pth$indirectPathCoefs)))
-  ind$p_h = 2*abs(.5 - rowSums(ind$dist_prop)/ncol(ind$dist_prop))
-  
-  p = sapply(ind$p_h, function(x) min(c(x, 1-x)))
-  if (p>0) {
-    ind$p = p
-  }else {
-    ind$p = 1/pth$nBootReps
+
+  for(i in 1:length(ind_paths)){
+    sortedDists = sort(ind_paths[[i]])
+    distProp = as.numeric(pth$IP[[i]]$coef > sortedDists)
+    p_h = 2*abs(.5 - sum(distProp)/length(distProp))
+    
+    if (p_h>0) {
+      pth$IP[[i]]$p = p
+    }else {
+      pth$IP[[i]]$p = 1/pth$nBootReps
+    }
+    #pth$IP[[i]]$dist = ind_paths[[i]]
+    pth$IP[[i]]$CI95pct = sortedDists[idxCI]
   }
 
-pth$bootIndirect$dist = ind_paths
-pth$bootIndirect$CI95pct = ind$sorted_dists[idxCI,]
-pth$bootIndirect$p = ind$p
+  pth$bootDirect$dist = NULL
 
 return(pth)
 }
@@ -210,11 +233,12 @@ return(pth)
 pathAnalysis <- function(paths, DF, covs=NULL, RFX=NULL, intercepts = TRUE, slopes = TRUE, nBootReps = 0, glmerText=NULL){
   
   pth = makePathObj(paths, DF, covs, RFX, intercepts, slopes, nBootReps, glmerText)
-  
+  pth = getVarNames(pth)
   pth = makeConnectionMatrix(pth)
   pth = directPathCoeffs(pth)
   pth = findIndirectPathsWrapper(pth)  
   pth = indirectPathCoefs(pth)
+  pth = bootStrapCoefs(pth)
   
   return(pth)
 }
@@ -238,12 +262,9 @@ RFX = "subs"
 pathRes<-pathAnalysis(paths, DF, covs, RFX, nBootReps = 100)
 
 ##TO DO: 
-# better connect the ind coefficients and their descriptions
-# report full equations
-# limit coef matrix etc. only to variables in the path
+
+# organize direct path stuff
 # check for crazy input, non-semantic input, and cyclic connections (which would invalidate this procedure)
-# implement bootstrapping for significance testing of direct coefficients
 # allow for lists of covariates and glmerText, in case each direct path requires something special. 
 # thoroughly check other test cases
-# allow entry for slopes = TRUE and intercepts = TRUE
-# label variables for bootIndirect and bootDirect
+# is there a way to suppress the matrix of bootstrapped values from appearing when the pathRes variable is typed?  If not, consider not storing the bootstrapped values...
