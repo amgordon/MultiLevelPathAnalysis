@@ -42,7 +42,7 @@ getVarNames <- function(pth){
 #create matrix of direct path connections
 makeConnectionMatrix <- function(pth){
   
-  connectionMatrix = matrix(0, pth$nVars, pth$nVars)
+  connectionMatrix = matrix(FALSE, pth$nVars, pth$nVars)
   rownames(connectionMatrix) = pth$varNames
   colnames(connectionMatrix) = pth$varNames
   
@@ -51,7 +51,7 @@ makeConnectionMatrix <- function(pth){
     theseVars<-strsplit(thisPath, "->")[[1]]
     V1<-which(theseVars[1] == pth$varNames)
     V2<-which(theseVars[2] == pth$varNames)
-    connectionMatrix[V1,V2] = 1
+    connectionMatrix[V1,V2] = TRUE
   }
   pth$connectionMatrix = connectionMatrix
   return(pth)
@@ -113,14 +113,14 @@ directPathCoeffs <- function(pth){
   eq = 0
   for( i in 1:ncol(pth$connectionMatrix) ){    
     thisCol<-pth$connectionMatrix[,i]
-    if(sum(thisCol)>0){
-      IVs<-pth$varNames[thisCol==1]
+    if(any(thisCol)){
+      IVs<-pth$varNames[thisCol]
       DV = pth$varNames[i]      
       
       thisReg = runRegression(pth, DV, IVs)
       eq = eq+1
       modelList[[eq]] = thisReg$mod
-      colsToReplace = which(thisCol==1)
+      colsToReplace = which(thisCol)
       coefMatrix[colsToReplace,i] = thisReg$coef[2:(1+length(colsToReplace))]
     }
   }
@@ -157,13 +157,13 @@ dSepTest <- function(pth){
   pth$MF = list()
   for( i in 2:ncol(pth$connectionMatrix) ){
     for( j in 1:(i-1) ){
-      if((pth$connectionMatrix[i,j]==0) & (pth$connectionMatrix[j,i]==0)){
+      if((!pth$connectionMatrix[i,j]) & (!pth$connectionMatrix[j,i])){
         idxBf = idxBf+1
         V1 = pth$varNames[i]
         V2 = pth$varNames[j]
         theseVars = c(V1, V2)
-        precedingVars1 = pth$varNames[pth$connectionMatrix[,i]==1]
-        precedingVars2 = pth$varNames[pth$connectionMatrix[,j]==1]
+        precedingVars1 = pth$varNames[pth$connectionMatrix[,i]]
+        precedingVars2 = pth$varNames[pth$connectionMatrix[,j]]
         precedingVars = union(precedingVars1, precedingVars2)
 
         indPaths = mapply(function(x) x$path, pathRes$IP)
@@ -291,7 +291,7 @@ bootStrapCoefs <- function(pth){
 
   for(i in 1:pth$nVars){
     for(j in 1:pth$nVars){
-      if (pth$connectionMatrix[i,j]==1){
+      if (pth$connectionMatrix[i,j]){
       thisSortedVec = sort(dir_paths[i,j,])
       pth$bootDirect$CI95Pct[[i,j]] = c(thisSortedVec[idxCI[1]],thisSortedVec[idxCI[2]])
       dist_prop<- as.numeric(pth$coefMatrix[i,j]>thisSortedVec)
@@ -360,7 +360,7 @@ RFX = "subs"
 
 ##TO DO: 
 
-# change connectionMatrix to True/False 
+
 # allow for logistic regressions (and all arbitrary arguments to glmer)
 # make sure the p-values for the bootstrap are correct.
 # organize direct path stuff
