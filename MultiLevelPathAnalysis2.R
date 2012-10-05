@@ -1,3 +1,8 @@
+# MultiLevel Path Analysis
+# Alan Gordon, September 2012
+
+require("lme4")
+
 # initialize the pth object
 makePathObj <- function(paths, DF, covs=NULL, RFX=NULL, intercepts = TRUE, slopes = TRUE, nBootReps = 0, glmerText=NULL){
   pth = list()
@@ -52,63 +57,148 @@ makeConnectionMatrix <- function(pth){
   return(pth)
 }
 
+# run a regression
+runRegression <- function(pth, DV, IVs){
+  
+  IVsCombined  <- paste( c(IVs) , collapse = "+" )
+  formulaText <- paste( DV, IVsCombined , sep = "~" )  
+  
+  for(j in 1:length(pth$covs)){
+    formulaText <- paste(formulaText, pth$covs[j], sep = "+")
+  }
+  
+  if(!is.null(pth$glmerText)){
+    formulaText <- paste(formulaText, pth$glmerText, sep = "+")
+  }
+  
+  for(j in 1:length(pth$RFX)){
+    
+    if(pth$intercepts){
+      thisRandEffect<-paste('(1|',pth$RFX[j],')', sep = "")
+      formulaText <- paste(formulaText, thisRandEffect, sep = "+")
+    }
+    
+    if(pth$slopes){
+      for(k in 1:length(IVs)){
+
+        thisSlope<-paste('(', IVs[k], '+0|', pth$RFX[j], ')', sep = "")
+        formulaText <- paste(formulaText, thisSlope, sep = "+")
+        
+      }
+    }
+  }
+
+  thisFormula <- as.formula(formulaText)
+
+  if(!is.null(pth$glmerText) | pth$intercepts | pth$slopes){    
+    thisMod<-do.call("glmer", args=list(thisFormula, data = as.name("DF"), REML=FALSE))
+    theseCoef<-attr(thisMod, "fixef")
+  } else {
+    thisMod<-lm(thisFormula, pth$DF)
+    theseCoef <- coefficients(summary(thisMod))[,"Estimate"] #otherwise run a normal linear model
+  }
+
+  output = list()
+  output$mod = thisMod
+  output$coef = theseCoef
+  return(output)
+}
+
+
 # create matrix of direct path coefficients	
 directPathCoeffs <- function(pth){
   coefMatrix = pth$connectionMatrix
   coefMatrix[,] = 0
-  
   modelList<-list()
   eq = 0
   for( i in 1:ncol(pth$connectionMatrix) ){    
     thisCol<-pth$connectionMatrix[,i]
-    
     if(sum(thisCol)>0){
       IVs<-pth$varNames[thisCol==1]
       DV = pth$varNames[i]      
-      IVsCombined	<- paste( c(IVs) , collapse = "+" )
-      formulaText <- paste( DV, IVsCombined , sep = "~" )
+      
+      thisReg = runRegression(pth, DV, IVs)
       eq = eq+1
-      
-      for(j in 1:length(pth$covs)){
-        formulaText <- paste(formulaText, pth$covs[j], sep = "+")
-      }
-      
-      if(!is.null(pth$glmerText)){
-        formulaText <- paste(formulaText, pth$glmerText, sep = "+")
-      }
-           
-      for(j in 1:length(pth$RFX)){
-       
-        if(pth$intercepts){
-          thisRandEffect<-paste('(1|',pth$RFX[j],')', sep = "")
-          formulaText <- paste(formulaText, thisRandEffect, sep = "+")
-        }
-        
-        if(pth$slopes){
-          for(k in 1:length(IVs)){
-            thisSlope<-paste('(', IVs[k], '+0|', pth$RFX[k], ')', sep = "")
-            formulaText <- paste(formulaText, thisSlope, sep = "+")
-          }
-        }
-      }
-                  
-      thisFormula <- as.formula(formulaText)
-      
-      if(!is.null(pth$glmerText) | pth$intercepts | pth$slopes){    
-        thisMod<-glmer(thisFormula, pth$DF) # run a mixed glm
-        theseCoef<-attr(thisMod, "fixef")
-      } else {
-        thisMod<-lm(thisFormula, pth$DF)
-        theseCoef <- coefficients(summary(thisMod))[,"Estimate"] #otherwise run a normal linear model
-      }
-      modelList[[eq]] = thisMod
+      modelList[[eq]] = thisReg$mod
       colsToReplace = which(thisCol==1)
-      coefMatrix[colsToReplace,i] = theseCoef[2:(1+length(colsToReplace))]
+      coefMatrix[colsToReplace,i] = thisReg$coef[2:(1+length(colsToReplace))]
     }
   }
   pth$coefMatrix = coefMatrix
   pth$modelList = modelList
   return(pth)
+}
+
+# use a log-likelihood ratio test to determine the significance of a coefficient in a mer object
+LRT <- function(theModel, idx=1){
+ 
+  modFull = theModel
+  modelTerms_h<-terms(theModel)  
+  modelTerms = attr(modelTerms_h, "term.labels")
+  
+  updateStr<-paste(".~.-",as.character(modelTerms[idx]))
+  modNested = update(theModel, updateStr)  
+  llFull = logLik(modFull)
+  llNested = logLik(modNested)
+  
+  chsqval<-2*(llFull[1] - llNested[1])
+  dfDiff<- attr(llFull,"df") - attr(llNested,"df") 
+  
+  pVal<-1-pchisq(chsqval,dfDiff)
+ 
+  return(pVal)
+}
+
+
+# perform a d-sep test of model fit
+dSepTest <- function(pth){
+  idxBf = 0
+  pVals = 0
+  pth$MF = list()
+  for( i in 2:ncol(pth$connectionMatrix) ){
+    for( j in 1:(i-1) ){
+      if((pth$connectionMatrix[i,j]==0) & (pth$connectionMatrix[j,i]==0)){
+        idxBf = idxBf+1
+        V1 = pth$varNames[i]
+        V2 = pth$varNames[j]
+        theseVars = c(V1, V2)
+        precedingVars1 = pth$varNames[pth$connectionMatrix[,i]==1]
+        precedingVars2 = pth$varNames[pth$connectionMatrix[,j]==1]
+        precedingVars = union(precedingVars1, precedingVars2)
+
+        indPaths = mapply(function(x) x$path, pathRes$IP)
+        indPathsContainsVars = mapply(function(x) is.element(V1,x) & is.element(V2,x), indPaths)
+        
+        # do any indirect paths contain both variables?
+        if (any(indPathsContainsVars)){
+          
+          # if so, the variable located earlier in the path is the IV
+          # and the variable located later is the DV
+          thisPath = unlist(indPaths[which(indPathsContainsVars)[1]])
+          match1 = match(V1,thisPath)
+          match2 = match(V2,thisPath)
+          if(match1 > match2){
+            thisReg = runRegression(pth, V1, c(V2, precedingVars))
+          }else{
+            thisReg = runRegression(pth, V2, c(V1, precedingVars))
+          }
+          pVals[idxBf] = LRT(thisReg$mod)
+        }  else {
+          # if no indirect path contains both variables, do the regression both ways
+          # and take the mean p-value across the regressions.
+          thisReg1 = runRegression(V1, c(V2, precedingVars))
+          thisReg2 = runRegression(V2, c(V1, precedingVars))
+          pVals[idxBf] = mean(c(LRT(thisReg1), LRT(thisReg2)))
+        }
+      }
+    }
+  }
+  C = -2*sum(log(pVals))
+  pth$MF$basisPVals = pVals
+  pth$MF$C = C
+  pth$MF$df = 2*length(pVals)
+  pth$MF$p = pchisq(C,2*length(pVals))
+  return(pth) 
 }
 
 # a wrapper to call the recursive function "findIndirectPaths"
@@ -245,6 +335,7 @@ pathAnalysis <- function(paths, DF, covs=NULL, RFX=NULL, intercepts = TRUE, slop
   pth = findIndirectPathsWrapper(pth)  
   pth = indirectPathCoefs(pth)
   pth = bootStrapCoefs(pth)
+  pth = dSepTest(pth)
   
   return(pth)
 }
@@ -265,10 +356,12 @@ paths = c('IV->MV1', 'MV1->MV2', 'MV2->DV')
 
 covs = ("c1")
 RFX = "subs"
-pathRes<-pathAnalysis(paths, DF, covs, RFX, nBootReps = 100)
+#pathRes<-pathAnalysis(paths, DF, covs, RFX, nBootReps = 100)
 
 ##TO DO: 
 
+# change connectionMatrix to True/False 
+# allow for logistic regressions (and all arbitrary arguments to glmer)
 # make sure the p-values for the bootstrap are correct.
 # organize direct path stuff
 # check for crazy and non-semantic input
