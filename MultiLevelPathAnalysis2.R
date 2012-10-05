@@ -6,54 +6,56 @@ require("lme4")
 # initialize the pth object
 makePathObj <- function(paths, DF, covs=NULL, RFX=NULL, intercepts = TRUE, slopes = TRUE, nBootReps = 0, glmerText=NULL){
   pth = list()
-  pth$paths = paths
-  pth$DF = DF
-  pth$varNames = NULL
-  pth$nVars = 0
-  pth$connectionMatrix = matrix()
-  pth$coefMatrix = matrix()
+  pth$init = list()
+  pth$init$paths = paths
+  pth$init$DF = DF
+  pth$init$varNames = NULL
+  pth$init$nVars = 0
+  pth$DP = list()
+  pth$DP$connectionMatrix = matrix()
+  pth$DP$coefMatrix = matrix()
   pth$IP = list()
-  pth$covs = covs
-  pth$RFX = RFX
-  pth$intercepts = intercepts
-  pth$slopes = slopes
-  pth$glmerText = glmerText
-  pth$modelList = list()
-  pth$nBootReps = nBootReps
+  pth$init$covs = covs
+  pth$init$RFX = RFX
+  pth$init$intercepts = intercepts
+  pth$init$slopes = slopes
+  pth$init$glmerText = glmerText
+  pth$DP$modelList = list()
+  pth$init$nBootReps = nBootReps
   return (pth)
 }
 
 # establish a list of variables that have connections among them.
 getVarNames <- function(pth){
   varNames<-NULL
-  for( i in 1:length(pth$paths) ){
-    thisPath<-pth$paths[i]
+  for( i in 1:length(pth$init$paths) ){
+    thisPath<-pth$init$paths[i]
     theseVars<-strsplit(thisPath, "->")[[1]]
     V1<-theseVars[1]
     V2<-theseVars[2]
     varNames = union(varNames, V1)
     varNames = union(varNames, V2)
   }
-  pth$varNames = varNames
-  pth$nVars = length(varNames)
+  pth$init$varNames = varNames
+  pth$init$nVars = length(varNames)
   return(pth)
 }
 
 #create matrix of direct path connections
 makeConnectionMatrix <- function(pth){
   
-  connectionMatrix = matrix(FALSE, pth$nVars, pth$nVars)
-  rownames(connectionMatrix) = pth$varNames
-  colnames(connectionMatrix) = pth$varNames
+  connectionMatrix = matrix(FALSE, pth$init$nVars, pth$init$nVars)
+  rownames(connectionMatrix) = pth$init$varNames
+  colnames(connectionMatrix) = pth$init$varNames
   
-  for( i in 1:length(pth$paths) ){
-    thisPath<-pth$paths[i]
+  for( i in 1:length(pth$init$paths) ){
+    thisPath<-pth$init$paths[i]
     theseVars<-strsplit(thisPath, "->")[[1]]
-    V1<-which(theseVars[1] == pth$varNames)
-    V2<-which(theseVars[2] == pth$varNames)
+    V1<-which(theseVars[1] == pth$init$varNames)
+    V2<-which(theseVars[2] == pth$init$varNames)
     connectionMatrix[V1,V2] = TRUE
   }
-  pth$connectionMatrix = connectionMatrix
+  pth$DP$connectionMatrix = connectionMatrix
   return(pth)
 }
 
@@ -63,38 +65,38 @@ runRegression <- function(pth, DV, IVs){
   IVsCombined  <- paste( c(IVs) , collapse = "+" )
   formulaText <- paste( DV, IVsCombined , sep = "~" )  
   
-  for(j in 1:length(pth$covs)){
-    formulaText <- paste(formulaText, pth$covs[j], sep = "+")
+  for(j in 1:length(pth$init$covs)){
+    formulaText <- paste(formulaText, pth$init$covs[j], sep = "+")
   }
   
-  if(!is.null(pth$glmerText)){
-    formulaText <- paste(formulaText, pth$glmerText, sep = "+")
-  }
-  
-  for(j in 1:length(pth$RFX)){
+  for(j in 1:length(pth$init$RFX)){
     
-    if(pth$intercepts){
-      thisRandEffect<-paste('(1|',pth$RFX[j],')', sep = "")
+    if(pth$init$intercepts){
+      thisRandEffect<-paste('(1|',pth$init$RFX[j],')', sep = "")
       formulaText <- paste(formulaText, thisRandEffect, sep = "+")
     }
     
-    if(pth$slopes){
+    if(pth$init$slopes){
       for(k in 1:length(IVs)){
 
-        thisSlope<-paste('(', IVs[k], '+0|', pth$RFX[j], ')', sep = "")
+        thisSlope<-paste('(', IVs[k], '+0|', pth$init$RFX[j], ')', sep = "")
         formulaText <- paste(formulaText, thisSlope, sep = "+")
         
       }
     }
   }
+  
+  if(!is.null(pth$init$glmerText)){
+    formulaText <- paste(formulaText, pth$init$glmerText, sep = "+")
+  }
 
   thisFormula <- as.formula(formulaText)
 
-  if(!is.null(pth$glmerText) | pth$intercepts | pth$slopes){    
+  if(!is.null(pth$init$glmerText) | pth$init$intercepts | pth$init$slopes){    
     thisMod<-do.call("glmer", args=list(thisFormula, data = as.name("DF"), REML=FALSE))
     theseCoef<-attr(thisMod, "fixef")
   } else {
-    thisMod<-lm(thisFormula, pth$DF)
+    thisMod<-lm(thisFormula, pth$init$DF)
     theseCoef <- coefficients(summary(thisMod))[,"Estimate"] #otherwise run a normal linear model
   }
 
@@ -107,15 +109,15 @@ runRegression <- function(pth, DV, IVs){
 
 # create matrix of direct path coefficients	
 directPathCoeffs <- function(pth){
-  coefMatrix = pth$connectionMatrix
+  coefMatrix = pth$DP$connectionMatrix
   coefMatrix[,] = 0
   modelList<-list()
   eq = 0
-  for( i in 1:ncol(pth$connectionMatrix) ){    
-    thisCol<-pth$connectionMatrix[,i]
+  for( i in 1:ncol(pth$DP$connectionMatrix) ){    
+    thisCol<-pth$DP$connectionMatrix[,i]
     if(any(thisCol)){
-      IVs<-pth$varNames[thisCol]
-      DV = pth$varNames[i]      
+      IVs<-pth$init$varNames[thisCol]
+      DV = pth$init$varNames[i]      
       
       thisReg = runRegression(pth, DV, IVs)
       eq = eq+1
@@ -124,8 +126,8 @@ directPathCoeffs <- function(pth){
       coefMatrix[colsToReplace,i] = thisReg$coef[2:(1+length(colsToReplace))]
     }
   }
-  pth$coefMatrix = coefMatrix
-  pth$modelList = modelList
+  pth$DP$coefMatrix = coefMatrix
+  pth$DP$modelList = modelList
   return(pth)
 }
 
@@ -155,18 +157,18 @@ dSepTest <- function(pth){
   idxBf = 0
   pVals = 0
   pth$MF = list()
-  for( i in 2:ncol(pth$connectionMatrix) ){
+  for( i in 2:ncol(pth$DP$connectionMatrix) ){
     for( j in 1:(i-1) ){
-      if((!pth$connectionMatrix[i,j]) & (!pth$connectionMatrix[j,i])){
+      if((!pth$DP$connectionMatrix[i,j]) & (!pth$DP$connectionMatrix[j,i])){
         idxBf = idxBf+1
-        V1 = pth$varNames[i]
-        V2 = pth$varNames[j]
+        V1 = pth$init$varNames[i]
+        V2 = pth$init$varNames[j]
         theseVars = c(V1, V2)
-        precedingVars1 = pth$varNames[pth$connectionMatrix[,i]]
-        precedingVars2 = pth$varNames[pth$connectionMatrix[,j]]
+        precedingVars1 = pth$init$varNames[pth$DP$connectionMatrix[,i]]
+        precedingVars2 = pth$init$varNames[pth$DP$connectionMatrix[,j]]
         precedingVars = union(precedingVars1, precedingVars2)
 
-        indPaths = mapply(function(x) x$path, pathRes$IP)
+        indPaths = mapply(function(x) x$path, pth$IP)
         indPathsContainsVars = mapply(function(x) is.element(V1,x) & is.element(V2,x), indPaths)
         
         # do any indirect paths contain both variables?
@@ -197,14 +199,14 @@ dSepTest <- function(pth){
   pth$MF$basisPVals = pVals
   pth$MF$C = C
   pth$MF$df = 2*length(pVals)
-  pth$MF$p = pchisq(C,2*length(pVals))
+  pth$MF$p = 1-pchisq(C,2*length(pVals))
   return(pth) 
 }
 
 # a wrapper to call the recursive function "findIndirectPaths"
 findIndirectPathsWrapper <- function(pth) {
   pth$ix<-0
-  pth = findIndirectPaths(pth, pth$varNames)
+  pth = findIndirectPaths(pth, pth$init$varNames)
   pth$thisIP<-NULL
   pth$ix<-NULL  
   return(pth)
@@ -215,9 +217,9 @@ findIndirectPaths <- function(pth, varsToSearch){
   
   for(v in varsToSearch){	
     
-    i = which(pth$varNames==v)
-    thisRow<-pth$coefMatrix[i,]
-    thisVar<-pth$varNames[i]
+    i = which(pth$init$varNames==v)
+    thisRow<-pth$DP$coefMatrix[i,]
+    thisVar<-pth$init$varNames[i]
     pth$thisIP = c(pth$thisIP, thisVar)
     
     if (length(unique(pth$thisIP)) != length(pth$thisIP)) {
@@ -233,8 +235,8 @@ findIndirectPaths <- function(pth, varsToSearch){
     }
     
     if(sum(abs(thisRow))>0){
-      newVarsToSearch = pth$varNames[which(thisRow!=0)]
-      newCoefMatrix = pth$coefMatrix
+      newVarsToSearch = pth$init$varNames[which(thisRow!=0)]
+      newCoefMatrix = pth$DP$coefMatrix
       newCoefMatrix[i,] = 0
       pth = findIndirectPaths(pth, newVarsToSearch)
     }
@@ -253,10 +255,10 @@ indirectPathCoefs <- function(pth){
     thisIndCoef = 1
     for( j in 1:(length(thisPath)-1) ){
       
-      V1<-which(thisPath[j] == pth$varNames)
-      V2<-which(thisPath[j+1] == pth$varNames)
+      V1<-which(thisPath[j] == pth$init$varNames)
+      V2<-which(thisPath[j+1] == pth$init$varNames)
       
-      thisDirCoef = pth$coefMatrix[V1,V2];
+      thisDirCoef = pth$DP$coefMatrix[V1,V2];
       thisIndCoef = thisIndCoef * thisDirCoef      
     }
     allIndirectPathCoef[[i]] = thisIndCoef
@@ -267,40 +269,40 @@ indirectPathCoefs <- function(pth){
 
 # Find bootstrap confidence intervals and p-values
 bootStrapCoefs <- function(pth){
-  dir_paths = array(0, c(dim(pth$coefMatrix), pth$nBootReps))
+  dir_paths = array(0, c(dim(pth$DP$coefMatrix), pth$init$nBootReps))
   ind_paths = NULL
-  for(i in 1:pth$nBootReps){
-    boot_DF 	<- pth$DF[sample( 1:nrow(pth$DF), replace=TRUE),]
+  for(i in 1:pth$init$nBootReps){
+    boot_DF 	<- pth$init$DF[sample( 1:nrow(pth$init$DF), replace=TRUE),]
     boot_pth = pth
-    boot_pth$DF = boot_DF
+    boot_pth$init$DF = boot_DF
     boot_pth = directPathCoeffs(boot_pth)
     boot_pth = indirectPathCoefs(boot_pth)
     theseIndCoefs = sapply(boot_pth$IP, function(x) getElement(x,"coef"))
     ind_paths 	<- as.data.frame(rbind(ind_paths, theseIndCoefs))
-    dir_paths[,,i]<-boot_pth$coefMatrix
+    dir_paths[,,i]<-boot_pth$DP$coefMatrix
   }
-  idxCI = c(round(.025*nrow(ind_paths)+.5), round(.975*nrow(ind_paths)+.5))
+  idxCI = c(floor(.025*nrow(ind_paths)), ceiling(.975*nrow(ind_paths)))
   
-  #pth$bootDirect$dist = dir_paths
-  pth$bootDirect$CI95Pct = array(list(NULL), dim(pth$coefMatrix))
-  rownames(pth$bootDirect$CI95Pct) = rownames(pth$coefMatrix)
-  colnames(pth$bootDirect$CI95Pct) = colnames(pth$coefMatrix)
-  #pth$bootDirect$p = array(0, dim(pth$coefMatrix))
-  pth$bootDirect$p = pth$coefMatrix
-  pth$bootDirect$p[,] = 0
+  #pth$DP$bootDirect$dist = dir_paths
+  pth$DP$bootDirect$CI95Pct = array(list(NULL), dim(pth$DP$coefMatrix))
+  rownames(pth$DP$bootDirect$CI95Pct) = rownames(pth$DP$coefMatrix)
+  colnames(pth$DP$bootDirect$CI95Pct) = colnames(pth$DP$coefMatrix)
+  #pth$DP$bootDirect$p = array(0, dim(pth$DP$coefMatrix))
+  pth$DP$bootDirect$p = pth$DP$coefMatrix
+  pth$DP$bootDirect$p[,] = 0
 
-  for(i in 1:pth$nVars){
-    for(j in 1:pth$nVars){
-      if (pth$connectionMatrix[i,j]){
+  for(i in 1:pth$init$nVars){
+    for(j in 1:pth$init$nVars){
+      if (pth$DP$connectionMatrix[i,j]){
       thisSortedVec = sort(dir_paths[i,j,])
-      pth$bootDirect$CI95Pct[[i,j]] = c(thisSortedVec[idxCI[1]],thisSortedVec[idxCI[2]])
-      dist_prop<- as.numeric(pth$coefMatrix[i,j]>thisSortedVec)
+      pth$DP$bootDirect$CI95Pct[[i,j]] = c(thisSortedVec[idxCI[1]],thisSortedVec[idxCI[2]])
+      dist_prop<- as.numeric(pth$DP$coefMatrix[i,j]>thisSortedVec)
       p_h = 2*abs(.5 - sum(dist_prop)/length(dist_prop))
       p = sapply(p_h, function(x) min(c(x, 1-x)))
       if (p==0) {
-        p = 1/pth$nBootReps
+        p = 1/pth$init$nBootReps
       }
-      pth$bootDirect$p[i,j] = p
+      pth$DP$bootDirect$p[i,j] = p
       }
     }
   }
@@ -313,13 +315,13 @@ bootStrapCoefs <- function(pth){
     if (p_h>0) {
       pth$IP[[i]]$p = p
     }else {
-      pth$IP[[i]]$p = 1/pth$nBootReps
+      pth$IP[[i]]$p = 1/pth$init$nBootReps
     }
     #pth$IP[[i]]$dist = ind_paths[[i]]
     pth$IP[[i]]$CI95pct = sortedDists[idxCI]
   }
 
-  pth$bootDirect$dist = NULL
+  pth$DP$bootDirect$dist = NULL
 
 return(pth)
 }
@@ -356,15 +358,12 @@ paths = c('IV->MV1', 'MV1->MV2', 'MV2->DV')
 
 covs = ("c1")
 RFX = "subs"
+
 #pathRes<-pathAnalysis(paths, DF, covs, RFX, nBootReps = 100)
 
 ##TO DO: 
 
-
-# allow for logistic regressions (and all arbitrary arguments to glmer)
-# make sure the p-values for the bootstrap are correct.
-# organize direct path stuff
 # check for crazy and non-semantic input
 # allow for lists of covariates and glmerText, in case each direct path requires something special. 
-# thoroughly check other test cases
+# thoroughly check other test cases, including glmerText
 # is there a way to suppress the matrix of bootstrapped values from appearing when the pathRes variable is typed?  (e.g. slots?) If not, consider not storing the bootstrapped values...
