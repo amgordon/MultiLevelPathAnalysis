@@ -164,14 +164,18 @@ runRegression <- function(pth, DV, IVs, covs){
 }
 
 
-# create matrix of direct path coefficients	
+# create matrix of direct path (DP) and simple effect (SE) coefficients
 directPathCoeffs <- function(pth){
   coefMatrix = pth$DP$connectionMatrix
   coefMatrix[,] = 0
+  coefMatrixSimple = coefMatrix
   p = pth$DP$connectionMatrix
   p[,] = -1
+  pSimple = p
   modelList<-list()
+  modelListSimple = modelList
   eq = 0
+  eqS = 0
   for( i in 1:ncol(pth$DP$connectionMatrix) ){    
     thisCol<-pth$DP$connectionMatrix[,i]
     if(any(thisCol)){
@@ -190,13 +194,35 @@ directPathCoeffs <- function(pth){
       thisCall  =  as.call(call_h[1:2])
       attr(thisMod,"call") = as.call(thisCall[1:2])
       modelList[[eq]] = thisMod
+      
+      for( j in which(thisCol==1) ){
+        eqS = eqS+1
+        IV<-pth$init$varNames[j]
+        DV = pth$init$varNames[i]      
+        thisReg = runRegression(pth, DV, IV, pth$init$covs)
+
+        colsToReplace = j
+
+        coefMatrixSimple[colsToReplace,i] = thisReg$coef[2]
+
+        pSimple[colsToReplace,i] = LRT(thisReg$mod, 1)
+        
+        # remove the data frame from being reported in the call slot
+        thisMod = thisReg$mod
+        call_h = attr(summary(thisMod),"call")
+        thisCall  =  as.call(call_h[1:2])
+        attr(thisMod,"call") = as.call(thisCall[1:2])
+        modelListSimple[[eqS]] = thisMod
+      }
     }
   }
   pth$DP$coefMatrix = coefMatrix
   pth$DP$pMatrix = p
-
-  
   pth$DP$modelList = modelList
+  
+  pth$SE$coefMatrix = coefMatrixSimple
+  pth$SE$pMatrix = pSimple
+  pth$SE$modelList = modelListSimple
   return(pth)
 }
 
@@ -235,6 +261,7 @@ dSepTest <- function(pth){
   idxBf = 0
   pVals = 0
   pth$MF = list()
+
   for( i in 2:ncol(pth$DP$connectionMatrix) ){
     for( j in 1:(i-1) ){
       if((!pth$DP$connectionMatrix[i,j]) & (!pth$DP$connectionMatrix[j,i])){
@@ -252,6 +279,7 @@ dSepTest <- function(pth){
         indPathsContainsVars = mapply(function(x) is.element(V1,x) & is.element(V2,x), indPaths)
         
         # if a path exists that contains both V1 and V2
+
         if (any(indPathsContainsVars)){
           
           # if a path exists that contains both V1 and V2, the variable 
@@ -277,6 +305,7 @@ dSepTest <- function(pth){
       }
     }
   }
+
   C = -2*sum(log(pVals))
   pth$MF$basisPVals = pVals
   pth$MF$C = C
@@ -354,6 +383,7 @@ indirectPathCoefs <- function(pth){
 # Find bootstrap confidence intervals and p-values
 bootStrapCoefs <- function(pth){
   dir_paths = array(0, c(dim(pth$DP$coefMatrix), pth$init$nBootReps))
+  simple_paths = array(0, c(dim(pth$SE$coefMatrix), pth$init$nBootReps))
   ind_paths = NULL
 
   cat("bootstrapping", pth$init$nBootReps, "iterations: ");    flush.console()
@@ -371,6 +401,7 @@ bootStrapCoefs <- function(pth){
     theseIndCoefs = sapply(boot_pth$IP, function(x) getElement(x,"coef"))
     ind_paths 	<- as.data.frame(rbind(ind_paths, theseIndCoefs))
     dir_paths[,,i]<-boot_pth$DP$coefMatrix
+    simple_paths[,,i]<-boot_pth$SE$coefMatrix
   }
   
   idxCI = c(floor(.025*nrow(ind_paths)), ceiling(.975*nrow(ind_paths)))
@@ -378,30 +409,49 @@ bootStrapCoefs <- function(pth){
     idxCI[1]=1
   }
   
-#   #The code below performs bootstrapping for testing the significance of the direct paths (probably not necessary)
-#   pth$DP$bootDirect$dist = dir_paths
-#   pth$DP$bootDirect$CI95Pct = array(list(NULL), dim(pth$DP$coefMatrix))
-#   rownames(pth$DP$bootDirect$CI95Pct) = rownames(pth$DP$coefMatrix)
-#   colnames(pth$DP$bootDirect$CI95Pct) = colnames(pth$DP$coefMatrix)
-#   #pth$DP$bootDirect$p = array(0, dim(pth$DP$coefMatrix))
-#   pth$DP$bootDirect$p = pth$DP$coefMatrix
-#   pth$DP$bootDirect$p[,] = 0
-# 
-#   for(i in 1:pth$init$nVars){
-#     for(j in 1:pth$init$nVars){
-#       if (pth$DP$connectionMatrix[i,j]){
-#       thisSortedVec = sort(dir_paths[i,j,])
-#       #pth$DP$bootDirect$CI95Pct[[i,j]] = c(thisSortedVec[idxCI[1]],thisSortedVec[idxCI[2]])
-#       dist_prop<- as.numeric(thisSortedVec>0)
-#       p_h = 2*abs(.5 - sum(dist_prop)/length(dist_prop))
-#       p = sapply(p_h, function(x) min(c(x, 1-x)))
-#       if (p==0) {
-#         p = 1/pth$init$nBootReps
-#       }
-#       #pth$DP$bootDirect$p[i,j] = p
-#       }
-#     }
-#   }
+  #The code below performs bootstrapping for testing the significance of the direct paths
+  pth$DP$bootDirect$dist = dir_paths
+  #pth$DP$bootDirect$CI95Pct = array(list(NULL), dim(pth$DP$coefMatrix))
+  #rownames(pth$DP$bootDirect$CI95Pct) = rownames(pth$DP$coefMatrix)
+  #colnames(pth$DP$bootDirect$CI95Pct) = colnames(pth$DP$coefMatrix)
+  #pth$DP$bootDirect$p = pth$DP$coefMatrix
+  #pth$DP$bootDirect$p[,] = NaN
+  pth$DP$bootDirect$CMinusCPrime$p = pth$DP$coefMatrix
+  pth$DP$bootDirect$CMinusCPrime$p[,] = NaN
+  pth$DP$bootDirect$CMinusCPrime$DiffScore = pth$DP$bootDirect$CMinusCPrime$p
+
+  for(i in 1:pth$init$nVars){
+    for(j in 1:pth$init$nVars){
+      if (pth$DP$connectionMatrix[i,j]){
+        #thisSortedVec = sort(dir_paths[i,j,])
+        #pth$DP$bootDirect$CI95Pct[[i,j]] = c(thisSortedVec[idxCI[1]],thisSortedVec[idxCI[2]])
+        #dist_prop<- as.numeric(thisSortedVec>0)
+        #p_h = 2*min(c(mean(dist_prop), 1-mean(dist_prop)))
+        #
+        #if (p_h==0) {
+        #  p = 1/length(dist_prop)
+        #}else{
+        #  p = p_h
+        #}
+        #pth$DP$bootDirect$p[i,j] = p
+        
+        # C minus Cprime bootstrapped
+        if (any(dir_paths[i,j,]!=simple_paths[i,j,])){
+          thisVec = simple_paths[i,j,] - dir_paths[i,j,]
+          dist_prop<- as.numeric(thisVec>0)
+          p_h = 2*min(c(mean(dist_prop), 1-mean(dist_prop)))
+          
+          if (p_h==0) {
+            p = 1/length(dist_prop)
+          }else{
+            p = p_h
+          }
+          pth$DP$bootDirect$CMinusCPrime$p[i,j] = p
+          pth$DP$bootDirect$CMinusCPrime$DiffScore[i,j] = mean(thisVec)
+        }
+      }
+    }
+  }
   
   # bootstrap testing for indirect paths.
   for(i in 1:length(ind_paths)){
