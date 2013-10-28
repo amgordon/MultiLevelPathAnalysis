@@ -14,29 +14,29 @@ the main function is:
 pathAnalysis(paths, DF,  covs=NULL, RFX=NULL, intercepts = TRUE, slopes = TRUE, nBootReps = 0, dichotVars = NULL, stdCoeffs = FALSE)
 
 **inputs:**
-* `paths` : A list of unidirectional connections, each in the form 'var1->var2,' indicating that var1 acts on var2.
-* `DF` : A data frame containing data from all variables, covariates, and random effects.
-* `covs` : A list of covariates variable names.  These variables are controlled for in the path equations, but are not included in the paths.
-* `RFX` : A list of random effect variable names.
-* `intercepts` : TRUE = model all random intercepts.  FALSE = do not model random intercepts.
-* `slopes` : TRUE = model all random slopes.  FALSE = do not model random slopes.
-* `nBootReps` : The number of bootstrapping iterations used to determine significance for indirect paths.
-* `dichotVars` : A list of all variables that are dichotomous.  When these varialbes are dependent variables, logistic regressions will be used.
-* `stdCoeffs` : Do we want to standardize the coefficients of logistic models, as in the fully standardized regression coefficients mentioned in Scott Menard (2004) Six Approaches to Calculating 
+`paths` : A list of unidirectional connections, each in the form 'var1->var2,' indicating that var1 acts on var2.
+`DF` : A data frame containing data from all variables, covariates, and random effects.
+`covs` : A list of covariates variable names.  These variables are controlled for in the path equations, but are not included in the paths.
+`RFX` : A list of random effect variable names.
+`intercepts` : TRUE = model all random intercepts.  FALSE = do not model random intercepts.
+`slopes` : TRUE = model all random slopes.  FALSE = do not model random slopes.
+`nBootReps` : The number of bootstrapping iterations used to determine significance for indirect paths.
+`dichotVars` : A list of all variables that are dichotomous.  When these varialbes are dependent variables, logistic regressions will be used.
+`stdCoeffs` : Do we want to standardize the coefficients of logistic models, as in the fully standardized regression coefficients mentioned in Scott Menard (2004) Six Approaches to Calculating 
 Standardized Logistic Regression Coefficients, The American Statistician, 58:3, 218-223
 
 **outputs:**
-* `MF` : Display the overall model fit.
+`MF` : Display the overall model fit.
 * MF$basisPVals : Component p values of non-connections among variables, used to calculate model fit.
 * MF$C : Chi-squared statistic of model fit.
 * MF$df : Degrees of freedom for test of model fit.
 * MF$p : Model fit p-value.
-* `DP` : List the coefficients, p-values, and models for direct connections between variables.
+`DP` : List the coefficients, p-values, and models for direct connections between variables.
 * DP$connectionMatrix : Matrix of modeled connections among variables.  IVs are rows, DVs are columns.
 * DP$coefMatrix: Matrix of direct connections among variables.
 * DP$modelList: List of solved models used to generate direct connection coefficients and p-values.
 * DP$pMatrix: Matrix of pValues of relationships among variables.
-* `IP` : List all indirect paths, their coefficients, bootstrapped p-vals, and 95% confidence intervals.
+`IP` : List all indirect paths, their coefficients, bootstrapped p-vals, and 95% confidence intervals.
 
 Usage Cases:
 
