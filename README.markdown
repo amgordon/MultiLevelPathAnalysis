@@ -1,12 +1,13 @@
 MultiLevel Path Analysis
-========================
 
 Alan Gordon, Stanford University Dept. of Psychology, September 2012
 
 This package enables statistical path analysis in a multilevel framework.  Given a path structure and a data frame, it computes overall model fit, direct effects, and indirect effects.  Model fit is tested using a d-sep goodness of fit test.  Significance of indirect effects is tested with bootstrapping methods.  
 
 The d-sep test of goodness-of-fit for multilevel models is taken from Shipley, B. "Confirmatory path analysis in a generalized multilevel context," Ecology 90:363-368, 2009.
+
 Mixed Linear Models are solved using R package lme4: http://cran.r-project.org/web/packages/lme4/index.html
+
 An example of how this method is used in a cognitive neuroscience can be found in Gordon, A. M., Rissman, J., Kiani, R., & Wagner, A. D. (in press). "Cortical reinstatement mediates the relationship between content-specific encoding activity and subsequent recollection decisions." Cerebral Cortex 
 
 the main function is:
@@ -29,8 +30,7 @@ Standardized Logistic Regression Coefficients, The American Statistician, 58:3, 
 * `DP` : List the coefficients, p-values, and models for direct connections between variables.
 * `IP` : List all indirect paths, their coefficients, bootstrapped p-vals, and 95% confidence intervals.
 
-Usage Cases
------------
+Usage Cases:
 
 ```
 {
@@ -48,6 +48,7 @@ pathRes1$MF #check model fit. p = .0012, therefore the data significantly diverg
 }
 ```
 
+
 2) Using a better model to predict tree death with Shipley.dat 
 ```
 {
@@ -57,6 +58,7 @@ pathRes2 = pathAnalysis(paths2, DF, dichotVars = 'Live', RFX=c('site', 'tree'), 
 pathRes2$MF #check model fit. p = .597, therefore we can retain the model
 }
 ```
+
 
 3) Use randomly generated data to test significance of indirect paths
 ```
