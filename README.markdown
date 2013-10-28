@@ -40,11 +40,6 @@ Standardized Logistic Regression Coefficients, The American Statistician, 58:3, 
 
 Usage Cases:
 
-```
-{
-pathRes3<-pathAnalysis(paths, DF, covs, RFX, nBootReps = 2000) Run the path Analysis
-}
-```
 
 1) Using a bad model to predict tree death with Shipley.dat 
 ```
@@ -82,5 +77,6 @@ DF	<- data.frame( DV , MV2, MV1, IV, c1, subs)
 paths = c('IV->MV1', 'MV1->MV2', 'MV2->DV')
 covs = ("c1")
 RFX = "subs"
+pathRes3<-pathAnalysis(paths, DF, covs, RFX, nBootReps = 2000)
 }
 ```
