@@ -6,7 +6,7 @@ This package enables statistical path analysis in a multilevel framework.  Given
 
 The d-sep test of goodness-of-fit for multilevel models is taken from Shipley, B. "Confirmatory path analysis in a generalized multilevel context," Ecology 90:363-368, 2009.
 
-Mixed Linear Models are solved using R package lme4: http://cran.r-project.org/web/packages/lme4/index.html
+Mixed linear models are solved using R package lme4: http://cran.r-project.org/web/packages/lme4/index.html
 
 An example of how this method can be used in cognitive neuroscience can be found in Gordon, A. M. et al. (in press). "Cortical reinstatement mediates the relationship between content-specific encoding activity and subsequent recollection decisions." Cerebral Cortex 
 
