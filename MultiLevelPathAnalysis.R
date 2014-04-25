@@ -28,7 +28,7 @@
 # DF = read.delim("Shipley.dat", sep=" ")
 # paths2 = c('lat->DD', 'DD->Date', 'Date->Growth', 'Growth->Live')
 # pathRes2 = pathAnalysis(paths2, DF, dichotVars = 'Live', RFX=c('site', 'tree'), intercepts = TRUE, slopes = FALSE)
-# pathRes2$MF #check model fit. p = .597, therefore we can retain the model
+# pathRes2$MF #check model fit. p = .588, therefore we can retain the model
 # 
 # 3) Use randomly generated data to test significance of indirect paths
 # n  <- 100
@@ -144,14 +144,18 @@ runRegression <- function(pth, DV, IVs, covs){
   # if the DV is dichotomous, specify that a binomial family will be used
   if(is.element(DV, pth$init$dichotVars)){
     familyText <-  "binomial"
+    modText <-"glmer"
+    lme4Args=list(thisFormula, data = thisDF, family=familyText, control=glmerControl(optimizer="bobyqa"))
   }else{
-    familyText <-  "gaussian"
+    modText <- "lmer"
+    familyText <- "gaussian"
+    lme4Args=list(thisFormula, data = thisDF, REML=FALSE, control=lmerControl(optimizer="bobyqa"))
   }
   
   # if random slope or intercepts are included, use glmer.  Otherwise, use glm.
   if(pth$init$intercepts | pth$init$slopes){    
     # do not use REML, so that a LL test can be properly used.
-    thisMod<-do.call("glmer", args=list(thisFormula, data = thisDF, REML=FALSE, family=familyText))
+    thisMod<-do.call(modText, args=lme4Args)
     theseCoef<-attr(thisMod, "fixef")
   } else {
     thisMod<-glm(thisFormula, pth$init$DF, family=familyText)
@@ -195,14 +199,12 @@ directPathCoeffs <- function(pth){
       eq = eq+1
 
       colsToReplace = which(thisCol)
-      coefMatrix[colsToReplace,i] = thisReg$coef[2:(1+length(colsToReplace))]
+      coefMatrix[colsToReplace,i] = fixef(thisReg$mod)[2:(1+length(colsToReplace))]
       p[colsToReplace,i] = LRT(thisReg$mod, names(colsToReplace))
       
       # remove the data frame from being reported in the call slot
       thisMod = thisReg$mod
-      call_h = attr(summary(thisMod),"call")
-      thisCall  =  as.call(call_h[1:2])
-      attr(thisMod,"call") = as.call(thisCall[1:2])
+      thisMod@call = thisMod@call[1:2]
       modelList[[eq]] = thisMod
       
       for( j in which(thisCol==1) ){
@@ -213,15 +215,13 @@ directPathCoeffs <- function(pth){
 
         colsToReplace = j
 
-        coefMatrixSimple[colsToReplace,i] = thisReg$coef[2]
+        coefMatrixSimple[colsToReplace,i] = fixef(thisReg$mod)[2]
 
         pSimple[colsToReplace,i] = LRT(thisReg$mod, 1)
         
         # remove the data frame from being reported in the call slot
         thisMod = thisReg$mod
-        call_h = attr(summary(thisMod),"call")
-        thisCall  =  as.call(call_h[1:2])
-        attr(thisMod,"call") = as.call(thisCall[1:2])
+        thisMod@call = thisMod@call[1:2]
         modelListSimple[[eqS]] = thisMod
       }
     }
