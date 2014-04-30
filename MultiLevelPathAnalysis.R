@@ -50,6 +50,7 @@
 
 
 require("lme4")
+require("abind")
 
 # initialize the pth object
 makePathObj <- function(paths, DF, covs=NULL, RFX=NULL, intercepts = TRUE, slopes = TRUE, nBootReps = 0, dichotVars = NULL, stdCoeffs = FALSE){
@@ -88,6 +89,10 @@ getVarNames <- function(pth){
   }
   pth$init$varNames = varNames
   pth$init$nVars = length(varNames)
+  
+  #subset the data frame to only include relevant variables
+  allVarNames = c(varNames, pth$init$RFX, pth$init$covs)
+  pth$init$DF = pth$init$DF[,allVarNames]
   
   return(pth)
 }
@@ -145,16 +150,17 @@ runRegression <- function(pth, DV, IVs, covs){
   if(is.element(DV, pth$init$dichotVars)){
     familyText <-  "binomial"
     modText <-"glmer"
-    lme4Args=list(thisFormula, data = thisDF, family=familyText, control=glmerControl(optimizer="bobyqa"))
+    lme4Args=list(thisFormula, data = thisDF, family=familyText)
   }else{
     modText <- "lmer"
     familyText <- "gaussian"
-    lme4Args=list(thisFormula, data = thisDF, REML=FALSE, control=lmerControl(optimizer="bobyqa"))
+    lme4Args=list(formula=thisFormula, data = thisDF, REML=FALSE)
+    lme4Txt = paste(formulaText, "data=thisDF", "REML=FALSE", sep = ', ')
   }
   
   # if random slope or intercepts are included, use glmer.  Otherwise, use glm.
   if(pth$init$intercepts | pth$init$slopes){    
-    # do not use REML, so that a LL test can be properly used.
+        
     thisMod<-do.call(modText, args=lme4Args)
     theseCoef<-attr(thisMod, "fixef")
   } else {
@@ -190,6 +196,7 @@ directPathCoeffs <- function(pth){
   modelListSimple = modelList
   eq = 0
   eqS = 0
+  
   for( i in 1:ncol(pth$DP$connectionMatrix) ){    
     thisCol<-pth$DP$connectionMatrix[,i]
     if(any(thisCol)){
@@ -390,17 +397,35 @@ indirectPathCoefs <- function(pth){
   return(pth)
 }	
 
+bootIterFun <-function(pth){
+  
+  boot_DF   <- pth$init$DF[sample( 1:nrow(pth$init$DF), replace=TRUE),]
+  boot_pth = pth
+  boot_pth$init$DF = boot_DF
+  
+  boot_pth = directPathCoeffs(boot_pth)
+  boot_pth = indirectPathCoefs(boot_pth)
+  theseIndCoefs = sapply(boot_pth$IP, function(x) getElement(x,"coef"))
+  
+  out = list()
+  out$ind_paths <- theseIndCoefs
+  out$dir_paths<-boot_pth$DP$coefMatrix
+  out$simple_paths<-boot_pth$SE$coefMatrix
+  
+  return(out)
+}
+
 # Find bootstrap confidence intervals and p-values
 bootStrapCoefs <- function(pth){
   dir_paths = array(0, c(dim(pth$DP$coefMatrix), pth$init$nBootReps))
   simple_paths = array(0, c(dim(pth$SE$coefMatrix), pth$init$nBootReps))
   ind_paths = NULL
-
+  
   cat("bootstrapping", pth$init$nBootReps, "iterations: ");    flush.console()
   for(i in 1:pth$init$nBootReps){    
-    if (i %% round(pth$init$nBootReps/10)==0){
-      cat(paste(round(100*i/pth$init$nBootRep), "% ", sep = ""));    flush.console()
-    }
+    #if (i %% round(pth$init$nBootReps/10)==0){
+    #  cat(paste(round(100*i/pth$init$nBootRep), "% ", sep = ""));    flush.console()
+    #}
     
     boot_DF 	<- pth$init$DF[sample( 1:nrow(pth$init$DF), replace=TRUE),]
     boot_pth = pth
@@ -414,7 +439,14 @@ bootStrapCoefs <- function(pth){
     simple_paths[,,i]<-boot_pth$SE$coefMatrix
   }
   
+  #bootRes = replicate(pth$init$nBootReps,bootIterFun(pth))
+  
+  #ind_paths = (bootRes["ind_paths",])
+  #dir_paths = abind(bootRes["dir_paths",], along = 3)
+  #simple_paths = abind(bootRes["simple_paths",], along = 3)
+  
   idxCI = c(floor(.025*nrow(ind_paths)), ceiling(.975*nrow(ind_paths)))
+  
   if (idxCI[1]==0){
     idxCI[1]=1
   }
@@ -429,7 +461,7 @@ bootStrapCoefs <- function(pth){
   pth$DP$bootDirect$CMinusCPrime$p = pth$DP$coefMatrix
   pth$DP$bootDirect$CMinusCPrime$p[,] = NaN
   pth$DP$bootDirect$CMinusCPrime$DiffScore = pth$DP$bootDirect$CMinusCPrime$p
-
+  
   for(i in 1:pth$init$nVars){
     for(j in 1:pth$init$nVars){
       if (pth$DP$connectionMatrix[i,j]){
@@ -476,14 +508,14 @@ bootStrapCoefs <- function(pth){
     }
     
     pth$IP[[i]]$p = p
-
+    
     #pth$IP[[i]]$dist = ind_paths[[i]]
     pth$IP[[i]]$CI95pct = sortedDists[idxCI]
   }
-
+  
   pth$DP$bootDirect$dist = NULL
   
-return(pth)
+  return(pth)
 }
 
 
