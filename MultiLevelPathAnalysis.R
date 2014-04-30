@@ -423,9 +423,9 @@ bootStrapCoefs <- function(pth){
   
   cat("bootstrapping", pth$init$nBootReps, "iterations: ");    flush.console()
   for(i in 1:pth$init$nBootReps){    
-    #if (i %% round(pth$init$nBootReps/10)==0){
-    #  cat(paste(round(100*i/pth$init$nBootRep), "% ", sep = ""));    flush.console()
-    #}
+    if (i %% round(pth$init$nBootReps/10)==0){
+      cat(paste(round(100*i/pth$init$nBootRep), "% ", sep = ""));    flush.console()
+    }
     
     boot_DF 	<- pth$init$DF[sample( 1:nrow(pth$init$DF), replace=TRUE),]
     boot_pth = pth
@@ -541,7 +541,8 @@ pathAnalysis <- function(paths, DF,  covs=NULL, RFX=NULL, intercepts = TRUE, slo
 
 
 ##TO DO: 
-
+# bug with less than 10 bootstrap iterations
+# use sapply more, for loops less.
 # allow for path connections to be entered as a matrix
 # check more thoroughly for nonsense input, use other test cases.
 # allow for lists of covariates and glmerText, in case each direct path requires different model params.
